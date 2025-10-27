@@ -46,8 +46,8 @@ public class BGMSync implements ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Stop.ID, (payload, context) -> {
             context.server().execute(() -> {
                 if (!isDJ(context.player())) return;
-                currentSoundId = null;
-                broadcastStop(context.server());
+                // Do NOT clear currentSoundId here; just stop everyone if DJ requested stop.
+                broadcastStopAll(context.server());
             });
         });
 
@@ -96,10 +96,11 @@ public class BGMSync implements ModInitializer {
                                     () -> Text.literal("[BGMSync] DJ set to: " + __tName),
                                     true
                                 );
+                                // If a track is active, re-broadcast so listeners follow new DJ's state
                                 if (currentSoundId != null) {
                                     broadcastPlay(server, currentSoundId);
                                 } else {
-                                    broadcastStop(server);
+                                    broadcastStop(server); // listeners only
                                 }
                                 return 1;
                             })
@@ -122,13 +123,13 @@ public class BGMSync implements ModInitializer {
                         return 1;
                     }))
 
-                    // /bgmsync stop
+                    // /bgmsync stop  -> stop music for BOTH DJ and listeners right now (no future prevention)
                     .then(literal("stop").executes(ctx -> {
                         MinecraftServer server = ctx.getSource().getServer();
-                        currentSoundId = null;
-                        broadcastStop(server);
+                        // Do NOT modify currentSoundId; just stop current playback everywhere.
+                        broadcastStopAll(server);
                         ctx.getSource().sendFeedback(
-                            () -> Text.literal("[BGMSync] All music stopped."),
+                            () -> Text.literal("[BGMSync] Stopped any currently playing music for everyone."),
                             true
                         );
                         return 1;
@@ -145,11 +146,19 @@ public class BGMSync implements ModInitializer {
         }
     }
 
+    // Stop only listeners (used in some flows)
     private void broadcastStop(MinecraftServer server) {
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
             if (!isDJ(p)) {
                 ServerPlayNetworking.send(p, BGMSyncPayloads.Stop.INSTANCE);
             }
+        }
+    }
+
+    // Stop DJ and listeners (used by /bgmsync stop and when DJ requests Stop)
+    private void broadcastStopAll(MinecraftServer server) {
+        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+            ServerPlayNetworking.send(p, BGMSyncPayloads.Stop.INSTANCE);
         }
     }
 
