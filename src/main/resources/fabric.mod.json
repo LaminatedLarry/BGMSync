@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "bgmsync",
+  "version": "${version}",
+  "name": "BGMSync",
+  "description": "Syncs background music from a DJ player to everyone else on the server.",
+  "authors": [
+    "ChatGPT"
+  ],
+  "license": "MIT",
+  "icon": "assets/bgmsync/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.bgmsync.BGMSync"
+    ],
+    "client": [
+      "com.bgmsync.client.BGMSyncClient"
+    ]
+  },
+  "mixins": [
+    "bgmsync.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.7",
+    "fabric": "*",
+    "minecraft": "1.21.1"
+  }
+}
