@@ -19,10 +19,10 @@ import static net.minecraft.server.command.CommandManager.literal;
 public class BGMSync implements ModInitializer {
 
     public static final String MODID = "bgmsync";
-    public static final Identifier PACKET_PLAY = Identifier.of(MODID, "play");
-    public static final Identifier PACKET_STOP = Identifier.of(MODID, "stop");
-    public static final Identifier PACKET_TEST = Identifier.of(MODID, "test");
-    public static final Identifier PACKET_DJ_ONLY = Identifier.of(MODID, "dj_only");
+    public static final Identifier PACKET_PLAY = new Identifier(MODID, "play");
+    public static final Identifier PACKET_STOP = new Identifier(MODID, "stop");
+    public static final Identifier PACKET_TEST = new Identifier(MODID, "test");
+    public static final Identifier PACKET_DJ_ONLY = new Identifier(MODID, "dj_only");
 
     private static UUID currentDJ = null;
     private static String currentSoundId = null;
