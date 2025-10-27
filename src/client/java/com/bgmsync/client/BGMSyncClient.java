@@ -7,8 +7,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.sound.SoundInstance;
-import net.minecraft.client.sound.SimpleSoundInstance;
 import net.minecraft.sound.MusicSound;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
@@ -65,30 +63,10 @@ public class BGMSyncClient implements ClientModInitializer {
     private static void playFromDJ(String soundId) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null) return;
-        Optional<SoundEvent> evt = mc.getSoundManager().get(Identifier.of(soundId));
+        java.util.Optional<net.minecraft.sound.SoundEvent> evt = mc.getSoundManager().get(Identifier.of(soundId));
         if (evt.isEmpty()) return;
         stopAllMusic();
-        SoundInstance inst = SimpleSoundInstance.forMusic(evt.getHolder());
-        mc.getSoundManager().play(inst);
+        net.minecraft.sound.MusicSound music = new net.minecraft.sound.MusicSound(evt.getHolder(), 0, 0, true);
+        mc.getMusicTracker().play(music);
         currentlySynced = soundId;
     }
-
-    private static void stopSynced() {
-        currentlySynced = null;
-        stopAllMusic();
-    }
-
-    private static void stopAllMusic() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null) return;
-        mc.getMusicTracker().stop();
-    }
-
-    private static void stopAutoMusicIfAny() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null) return;
-        mc.getMusicTracker().stop();
-    }
-
-    public static boolean isDJ() { return isDJ; }
-}
