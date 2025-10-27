@@ -71,7 +71,8 @@ public class BGMSync implements ModInitializer {
                         return 1;
                     }
                     ServerPlayNetworking.send(dj, BGMSyncPayloads.Test.INSTANCE);
-                    ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] Test triggered for DJ: " + dj.getName().getString()), true);
+                    final String __djName = dj.getName().getString();
+                    ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] Test triggered for DJ: " + __djName), true);
                     return 1;
                 }))
             );
