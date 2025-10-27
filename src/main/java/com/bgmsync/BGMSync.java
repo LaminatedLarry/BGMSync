@@ -68,6 +68,7 @@ public class BGMSync implements ModInitializer {
             dispatcher.register(
                 literal("bgmsync")
                     .requires(src -> src.hasPermissionLevel(2)) // op-required for subcommands
+
                     // /bgmsync test
                     .then(literal("test").executes(ctx -> {
                         MinecraftServer server = ctx.getSource().getServer();
@@ -78,10 +79,11 @@ public class BGMSync implements ModInitializer {
                             return 1;
                         }
                         ServerPlayNetworking.send(dj, BGMSyncPayloads.Test.INSTANCE);
-                        final String __djName = dj.getName().getString(); // make effectively final for the supplier
+                        final String __djName = dj.getName().getString();
                         ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] Test triggered for DJ: " + __djName), true);
                         return 1;
                     }))
+
                     // /bgmsync set <player>
                     .then(literal("set")
                         .then(argument("player", EntityArgumentType.player())
@@ -94,7 +96,6 @@ public class BGMSync implements ModInitializer {
                                     () -> Text.literal("[BGMSync] DJ set to: " + __tName),
                                     true
                                 );
-                                // If a track is active, re-broadcast so listeners follow new DJ's state
                                 if (currentSoundId != null) {
                                     broadcastPlay(server, currentSoundId);
                                 } else {
@@ -104,6 +105,7 @@ public class BGMSync implements ModInitializer {
                             })
                         )
                     )
+
                     // /bgmsync who
                     .then(literal("who").executes(ctx -> {
                         MinecraftServer server = ctx.getSource().getServer();
@@ -117,6 +119,18 @@ public class BGMSync implements ModInitializer {
                                 false
                             );
                         }
+                        return 1;
+                    }))
+
+                    // /bgmsync stop
+                    .then(literal("stop").executes(ctx -> {
+                        MinecraftServer server = ctx.getSource().getServer();
+                        currentSoundId = null;
+                        broadcastStop(server);
+                        ctx.getSource().sendFeedback(
+                            () -> Text.literal("[BGMSync] All music stopped."),
+                            true
+                        );
                         return 1;
                     }))
             );
