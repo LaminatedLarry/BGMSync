@@ -1,98 +1,116 @@
-
 package com.bgmsync.client;
 
 import com.bgmsync.BGMSyncPayloads;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.sound.MusicSound;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
 
-import java.util.Optional;
+public final class BGMSyncClient implements ClientModInitializer {
 
-public class BGMSyncClient implements ClientModInitializer {
-
-    private static boolean isDJ = false;
-    private static boolean suppressLocalMusic = true;
-    private static String currentlySynced = null;
+    private static volatile boolean IS_DJ = false;
+    private static volatile String CURRENTLY_SYNCED = null; // sound id string from DJ
 
     @Override
     public void onInitializeClient() {
-        // Register payload codecs
+        // Ensure payload types are registered once globally (safe to call here).
         com.bgmsync.BGMSyncPayloads.registerAll();
 
-
-        // Receivers
-        ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Play.ID, (payload, context) -> {
-            String soundId = payload.soundId();
-            context.client().execute(() -> playFromDJ(soundId));
-        });
-        ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Stop.ID, (payload, context) -> {
-            context.client().execute(BGMSyncClient::stopSynced);
-        });
+        // Server tells us whether we are the DJ.
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.DjOnly.ID, (payload, context) -> {
-            boolean djFlag = payload.isDj();
-            context.client().execute(() -> {
-                isDJ = djFlag;
-                suppressLocalMusic = !isDJ;
-                if (!isDJ) stopAllMusic();
-            });
+            setIsDJ(payload.isDj());
         });
+
+        // Server tells listeners to play a specific track (by Identifier string).
+        ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Play.ID, (payload, context) -> {
+            playFromDJ(payload.soundId());
+        });
+
+        // Server tells listeners to stop music.
+        ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Stop.ID, (payload, context) -> {
+            stopAllMusic();
+        });
+
+        // Server asks the DJ client to start a random track (vanilla or modded).
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Test.ID, (payload, context) -> {
-            context.client().execute(BGMSyncClient::triggerRandomTrackForDJ);
-        });
-
-        // Constantly suppress local auto-music for listeners
-        ClientTickEvents.END_CLIENT_TICK.register(mc -> {
-            if (!isDJ && suppressLocalMusic) stopAutoMusicIfAny();
+            playRandomForDJ();
         });
     }
 
-    private static void triggerRandomTrackForDJ() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.isPaused()) return;
-        MusicSound music = mc.getMusicType();
-        if (music == null) return;
-        mc.getMusicTracker().play(music);
+    // ===== Public helpers used by mixins =====
+
+    public static boolean isDJ() {
+        return IS_DJ;
     }
 
-    private static void playFromDJ(String soundId) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null) return;
-        var id = Identifier.of(soundId);
-var key = net.minecraft.registry.RegistryKey.of(net.minecraft.registry.RegistryKeys.SOUND_EVENT, id);
-var entry = MinecraftClient.getInstance()
-        .getNetworkHandler()
-        .getRegistryManager()
-        .get(net.minecraft.registry.RegistryKeys.SOUND_EVENT)
-        .getEntry(key)
-        .orElse(null);
-if (entry == null) return;
-
-stopAllMusic();
-MusicSound music = new MusicSound(entry, 0, 0, true);
-mc.getMusicTracker().play(music);
-currentlySynced = soundId;
+    public static void setIsDJ(boolean value) {
+        IS_DJ = value;
+        // Listeners must never keep their own music running.
+        if (!IS_DJ) stopAllMusic();
     }
 
-    private static void stopSynced() {
-        currentlySynced = null;
-        stopAllMusic();
+    public static void stopAllMusic() {
+        var mc = MinecraftClient.getInstance();
+        if (mc != null && mc.getMusicTracker() != null) {
+            mc.getMusicTracker().stop();
+            CURRENTLY_SYNCED = null;
+        }
     }
 
-    private static void stopAllMusic() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null) return;
+    /**
+     * Called on listeners when the server sends a PLAY payload with a sound id string.
+     * Converts the string id into a RegistryEntry<SoundEvent> and plays it via MusicTracker.
+     */
+    public static void playFromDJ(String soundId) {
+        var mc = MinecraftClient.getInstance();
+        if (mc == null || mc.getNetworkHandler() == null) return;
+        if (IS_DJ) return; // DJ already plays locally via SoundManager; don't double-play
+
+        try {
+            var id = Identifier.of(soundId);
+            var key = RegistryKey.of(RegistryKeys.SOUND_EVENT, id);
+            var entryOpt = mc.getNetworkHandler()
+                    .getRegistryManager()
+                    .get(RegistryKeys.SOUND_EVENT)
+                    .getEntry(key);
+            if (entryOpt.isEmpty()) return;
+
+            RegistryEntry<SoundEvent> entry = entryOpt.get();
+
+            // Ensure we don't layer multiple tracks.
+            stopAllMusic();
+
+            MusicSound music = new MusicSound(entry, 0, 0, true);
+            mc.getMusicTracker().play(music);
+            CURRENTLY_SYNCED = soundId;
+        } catch (Exception ignored) {
+            // If anything fails to resolve, we silently ignore to avoid client crashes.
+        }
+    }
+
+    /**
+     * Only the DJ is allowed to initiate music locally.
+     * This uses the game's current music selection, which may be vanilla or modded,
+     * and then our SoundManager mixin will broadcast it to the server.
+     */
+    public static void playRandomForDJ() {
+        if (!IS_DJ) return;
+        var mc = MinecraftClient.getInstance();
+        if (mc == null || mc.getMusicTracker() == null) return;
+
+        // Stop any current track, then let the tracker pick one (state-based random).
         mc.getMusicTracker().stop();
+        // Ask tracker to start according to current context (biome/menu/etc.)
+        // The tracker will schedule and begin playing; our SoundManager mixin will capture it.
+        // To nudge immediate playback, request a generic "current context" music sound:
+        var current = mc.getMusicType(); // returns MusicSound representing current context
+        if (current != null) {
+            mc.getMusicTracker().play(current);
+        }
     }
-
-    private static void stopAutoMusicIfAny() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null) return;
-        mc.getMusicTracker().stop();
-    }
-
-    public static boolean isDJ() { return isDJ; }
 }
