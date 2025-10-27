@@ -1,17 +1,18 @@
-
 package com.bgmsync;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
-import java.util.*;
+import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 
 import static net.minecraft.server.command.CommandManager.literal;
 
@@ -24,13 +25,14 @@ public class BGMSync implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // Centralized payload registration (guarded)
         BGMSyncPayloads.registerAll();
-    LOGGER.info("[BGMSync] Mod initialized!");
-}
 
+        // Choose/clear DJ on lifecycle
         ServerLifecycleEvents.SERVER_STARTED.register(this::chooseDJ);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> currentDJ = null);
 
+        // Handle payloads from clients
         ServerPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Play.ID, (payload, context) -> {
             context.server().execute(() -> {
                 if (!isDJ(context.player())) return;
@@ -38,6 +40,7 @@ public class BGMSync implements ModInitializer {
                 broadcastPlay(context.server(), currentSoundId);
             });
         });
+
         ServerPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Stop.ID, (payload, context) -> {
             context.server().execute(() -> {
                 if (!isDJ(context.player())) return;
@@ -46,6 +49,7 @@ public class BGMSync implements ModInitializer {
             });
         });
 
+        // New player joins → tell them if they are DJ and start current track if needed
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity p = handler.player;
             server.execute(() -> {
@@ -57,6 +61,7 @@ public class BGMSync implements ModInitializer {
             });
         });
 
+        // /BGMSync test → start a random track on the DJ (which syncs to listeners)
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(literal("BGMSync")
                 .then(literal("test").executes(ctx -> {
@@ -101,10 +106,15 @@ public class BGMSync implements ModInitializer {
     }
 
     private void ensureDJ(MinecraftServer server) {
-        if (currentDJ == null || server.getPlayerManager().getPlayer(currentDJ) == null) { chooseDJ(server); }
+        if (currentDJ == null || server.getPlayerManager().getPlayer(currentDJ) == null) {
+            chooseDJ(server);
+        }
     }
 
-    public static boolean isDJ(ServerPlayerEntity p) { return p != null && p.getUuid().equals(currentDJ); }
+    public static boolean isDJ(ServerPlayerEntity p) {
+        return p != null && p.getUuid().equals(currentDJ);
+    }
+
     public static ServerPlayerEntity getDJ(MinecraftServer server) {
         if (currentDJ == null) return null;
         return server.getPlayerManager().getPlayer(currentDJ);
