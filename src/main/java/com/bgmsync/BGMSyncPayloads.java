@@ -1,6 +1,7 @@
 
 package com.bgmsync;
 
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.codec.PacketCodecs;
@@ -8,6 +9,19 @@ import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
 
 public class BGMSyncPayloads {
+    
+private static boolean __registered = false;
+public static synchronized void registerAll() {
+    if (__registered) return;
+    PayloadTypeRegistry.playS2C().register(Play.ID, Play.CODEC);
+    PayloadTypeRegistry.playS2C().register(Stop.ID, Stop.CODEC);
+    PayloadTypeRegistry.playS2C().register(DjOnly.ID, DjOnly.CODEC);
+    PayloadTypeRegistry.playS2C().register(Test.ID, Test.CODEC);
+    PayloadTypeRegistry.playC2S().register(Play.ID, Play.CODEC);
+    PayloadTypeRegistry.playC2S().register(Stop.ID, Stop.CODEC);
+    __registered = true;
+}
+
 
     public record Play(String soundId) implements CustomPayload {
         public static final Id<Play> ID = new Id<>(Identifier.of("bgmsync","play"));
