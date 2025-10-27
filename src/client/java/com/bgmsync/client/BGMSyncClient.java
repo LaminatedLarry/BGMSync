@@ -66,12 +66,20 @@ public class BGMSyncClient implements ClientModInitializer {
     private static void playFromDJ(String soundId) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null) return;
-        Optional<SoundEvent> evt = mc.getSoundManager().get(Identifier.of(soundId));
-        if (evt.isEmpty()) return;
-        stopAllMusic();
-        MusicSound music = new MusicSound(evt.getHolder(), 0, 0, true);
-        mc.getMusicTracker().play(music);
-        currentlySynced = soundId;
+        var id = Identifier.of(soundId);
+var key = net.minecraft.registry.RegistryKey.of(net.minecraft.registry.RegistryKeys.SOUND_EVENT, id);
+var entry = MinecraftClient.getInstance()
+        .getNetworkHandler()
+        .getRegistryManager()
+        .get(net.minecraft.registry.RegistryKeys.SOUND_EVENT)
+        .getEntry(key)
+        .orElse(null);
+if (entry == null) return;
+
+stopAllMusic();
+MusicSound music = new MusicSound(entry, 0, 0, true);
+mc.getMusicTracker().play(music);
+currentlySynced = soundId;
     }
 
     private static void stopSynced() {
