@@ -5,7 +5,6 @@ import com.bgmsync.BGMSyncPayloads;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.sound.MusicSound;
 import net.minecraft.sound.SoundEvent;
@@ -22,12 +21,8 @@ public class BGMSyncClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         // Register payload codecs
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Play.ID, BGMSyncPayloads.Play.CODEC);
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Stop.ID, BGMSyncPayloads.Stop.CODEC);
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.DjOnly.ID, BGMSyncPayloads.DjOnly.CODEC);
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Test.ID, BGMSyncPayloads.Test.CODEC);
-        PayloadTypeRegistry.playC2S().register(BGMSyncPayloads.Play.ID, BGMSyncPayloads.Play.CODEC);
-        PayloadTypeRegistry.playC2S().register(BGMSyncPayloads.Stop.ID, BGMSyncPayloads.Stop.CODEC);
+        com.bgmsync.BGMSyncPayloads.registerAll();
+
 
         // Receivers
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Play.ID, (payload, context) -> {
