@@ -1,4 +1,3 @@
-
 package com.bgmsync.client;
 
 import com.bgmsync.BGMSync;
@@ -59,7 +58,7 @@ public class BGMSyncClient implements ClientModInitializer {
         Optional<SoundEvent> evt = mc.getSoundManager().get(Identifier.of(soundId));
         if (evt.isEmpty()) return;
         stopAllMusic();
-        SoundInstance inst = SimpleSoundInstance.music(evt.getHolder());
+        SoundInstance inst = SimpleSoundInstance.forMusic(evt.getHolder());
         mc.getSoundManager().play(inst);
         currentlySynced = soundId;
     }

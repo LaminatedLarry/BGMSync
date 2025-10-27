@@ -1,4 +1,3 @@
-
 package com.bgmsync.mixin;
 
 import com.bgmsync.BGMSync;

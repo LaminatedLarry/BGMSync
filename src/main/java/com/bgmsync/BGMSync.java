@@ -1,18 +1,19 @@
-
 package com.bgmsync;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.network.PacketByteBuf;
+
 import java.util.*;
+
 import static net.minecraft.server.command.CommandManager.literal;
 
 public class BGMSync implements ModInitializer {
@@ -68,10 +69,7 @@ public class BGMSync implements ModInitializer {
                 .then(literal("test").executes(ctx -> {
                     MinecraftServer server = ctx.getSource().getServer();
                     ServerPlayerEntity dj = getDJ(server);
-                    if (dj == null) {
-                        chooseDJ(server);
-                        dj = getDJ(server);
-                    }
+                    if (dj == null) { chooseDJ(server); dj = getDJ(server); }
                     if (dj == null) {
                         ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] No players online to be DJ."), false);
                         return 1;
@@ -88,17 +86,13 @@ public class BGMSync implements ModInitializer {
         PacketByteBuf buf = PacketByteBufs.create();
         buf.writeString(soundId);
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-            if (!isDJ(p)) {
-                ServerPlayNetworking.send(p, PACKET_PLAY, buf);
-            }
+            if (!isDJ(p)) { ServerPlayNetworking.send(p, PACKET_PLAY, buf); }
         }
     }
 
     private static void broadcastStop(MinecraftServer server) {
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-            if (!isDJ(p)) {
-                ServerPlayNetworking.send(p, PACKET_STOP, PacketByteBufs.empty());
-            }
+            if (!isDJ(p)) { ServerPlayNetworking.send(p, PACKET_STOP, PacketByteBufs.empty()); }
         }
     }
 
@@ -111,15 +105,10 @@ public class BGMSync implements ModInitializer {
     }
 
     private static void ensureDJ(MinecraftServer server) {
-        if (currentDJ == null || server.getPlayerManager().getPlayer(currentDJ) == null) {
-            chooseDJ(server);
-        }
+        if (currentDJ == null || server.getPlayerManager().getPlayer(currentDJ) == null) { chooseDJ(server); }
     }
 
-    public static boolean isDJ(ServerPlayerEntity p) {
-        return p != null && p.getUuid().equals(currentDJ);
-    }
-
+    public static boolean isDJ(ServerPlayerEntity p) { return p != null && p.getUuid().equals(currentDJ); }
     public static ServerPlayerEntity getDJ(MinecraftServer server) {
         if (currentDJ == null) return null;
         return server.getPlayerManager().getPlayer(currentDJ);
