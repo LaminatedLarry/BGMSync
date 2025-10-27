@@ -19,10 +19,10 @@ public class MusicTrackerMixin {
     private void bgmsync$afterPlay(MusicSound musicSound, CallbackInfo ci) {
         if (!BGMSyncClient.isDJ()) return;
         try {
-            var entry = musicSound.event();
+            var entry = ((MusicSoundAccessor)(Object) musicSound).bgmsync$getEvent();
 var registryKey = entry.getKey().orElse(null);
 if (registryKey == null) return;
-var id = registryKey.getValue(); // this is an Identifier
+var id = registryKey.getValue(); // Identifier
 if (MinecraftClient.getInstance().getNetworkHandler() != null) {
     ClientPlayNetworking.send(new BGMSyncPayloads.Play(id.toString()));
 }
