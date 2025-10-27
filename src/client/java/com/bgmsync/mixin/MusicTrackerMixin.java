@@ -19,7 +19,7 @@ public class MusicTrackerMixin {
     private void bgmsync$afterPlay(MusicSound musicSound, CallbackInfo ci) {
         if (!BGMSyncClient.isDJ()) return;
         try {
-            var entry = musicSound.sound();
+            var entry = musicSound.event();
 var registryKey = entry.getKey().orElse(null);
 if (registryKey == null) return;
 var id = registryKey.getValue(); // this is an Identifier
