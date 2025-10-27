@@ -21,6 +21,7 @@ public class BGMSyncClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // Register payload codecs
         PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Play.ID, BGMSyncPayloads.Play.CODEC);
         PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Stop.ID, BGMSyncPayloads.Stop.CODEC);
         PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.DjOnly.ID, BGMSyncPayloads.DjOnly.CODEC);
@@ -28,6 +29,7 @@ public class BGMSyncClient implements ClientModInitializer {
         PayloadTypeRegistry.playC2S().register(BGMSyncPayloads.Play.ID, BGMSyncPayloads.Play.CODEC);
         PayloadTypeRegistry.playC2S().register(BGMSyncPayloads.Stop.ID, BGMSyncPayloads.Stop.CODEC);
 
+        // Receivers
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Play.ID, (payload, context) -> {
             String soundId = payload.soundId();
             context.client().execute(() -> playFromDJ(soundId));
@@ -47,6 +49,7 @@ public class BGMSyncClient implements ClientModInitializer {
             context.client().execute(BGMSyncClient::triggerRandomTrackForDJ);
         });
 
+        // Constantly suppress local auto-music for listeners
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             if (!isDJ && suppressLocalMusic) stopAutoMusicIfAny();
         });
@@ -63,10 +66,30 @@ public class BGMSyncClient implements ClientModInitializer {
     private static void playFromDJ(String soundId) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null) return;
-        java.util.Optional<net.minecraft.sound.SoundEvent> evt = mc.getSoundManager().get(Identifier.of(soundId));
+        Optional<SoundEvent> evt = mc.getSoundManager().get(Identifier.of(soundId));
         if (evt.isEmpty()) return;
         stopAllMusic();
-        net.minecraft.sound.MusicSound music = new net.minecraft.sound.MusicSound(evt.getHolder(), 0, 0, true);
+        MusicSound music = new MusicSound(evt.getHolder(), 0, 0, true);
         mc.getMusicTracker().play(music);
         currentlySynced = soundId;
     }
+
+    private static void stopSynced() {
+        currentlySynced = null;
+        stopAllMusic();
+    }
+
+    private static void stopAllMusic() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null) return;
+        mc.getMusicTracker().stop();
+    }
+
+    private static void stopAutoMusicIfAny() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null) return;
+        mc.getMusicTracker().stop();
+    }
+
+    public static boolean isDJ() { return isDJ; }
+}
