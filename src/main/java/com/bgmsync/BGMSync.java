@@ -24,12 +24,9 @@ public class BGMSync implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Play.ID, BGMSyncPayloads.Play.CODEC);
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Stop.ID, BGMSyncPayloads.Stop.CODEC);
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.DjOnly.ID, BGMSyncPayloads.DjOnly.CODEC);
-        PayloadTypeRegistry.playC2S().register(BGMSyncPayloads.Play.ID, BGMSyncPayloads.Play.CODEC);
-        PayloadTypeRegistry.playC2S().register(BGMSyncPayloads.Stop.ID, BGMSyncPayloads.Stop.CODEC);
-        PayloadTypeRegistry.playS2C().register(BGMSyncPayloads.Test.ID, BGMSyncPayloads.Test.CODEC);
+        BGMSyncPayloads.registerAll();
+    LOGGER.info("[BGMSync] Mod initialized!");
+}
 
         ServerLifecycleEvents.SERVER_STARTED.register(this::chooseDJ);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> currentDJ = null);
