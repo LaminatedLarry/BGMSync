@@ -3,7 +3,7 @@ package com.bgmsync.client;
 import com.bgmsync.BGMSyncPayloads;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.client.sound.v1.PlaySoundCallback;
+import net.fabricmc.fabric.api.client.sound.v1.ClientSoundEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
@@ -50,9 +50,8 @@ public final class BGMSyncClient implements ClientModInitializer {
         });
 
         // === Natural music sync (no mixins) ===
-        // Whenever the client plays any sound, if we are the DJ and it's MUSIC category,
-        // broadcast the exact sound id to the server so listeners play the same track.
-        PlaySoundCallback.EVENT.register((sound, manager) -> {
+        // AFTER_PLAY fires after any sound starts playing client-side.
+        ClientSoundEvents.AFTER_PLAY.register((sound, manager) -> {
             try {
                 if (sound != null && sound.getCategory() == SoundCategory.MUSIC && IS_DJ) {
                     Identifier id = sound.getId();
@@ -64,7 +63,6 @@ public final class BGMSyncClient implements ClientModInitializer {
             } catch (Throwable ignored) {
                 // Never crash the client due to a sound hook.
             }
-            return sound; // don’t modify or cancel the sound; just observe & broadcast
         });
     }
 
