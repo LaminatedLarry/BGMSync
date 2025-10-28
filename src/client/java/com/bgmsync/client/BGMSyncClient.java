@@ -3,14 +3,12 @@ package com.bgmsync.client;
 import com.bgmsync.BGMSyncPayloads;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.client.sound.v1.ClientSoundEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.sound.MusicSound;
-import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
 
@@ -27,7 +25,7 @@ public final class BGMSyncClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         // Ensure payload types are registered once globally (safe to call here).
-        com.bgmsync.BGMSyncPayloads.registerAll();
+        BGMSyncPayloads.registerAll();
 
         // Server tells us whether we are the DJ.
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.DjOnly.ID, (payload, context) -> {
@@ -48,25 +46,7 @@ public final class BGMSyncClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Test.ID, (payload, context) -> {
             playRandomForDJ(); // This will also broadcast C2S to the server.
         });
-
-        // === Natural music sync (no mixins) ===
-        // AFTER_PLAY fires after any sound starts playing client-side.
-        ClientSoundEvents.AFTER_PLAY.register((sound, manager) -> {
-            try {
-                if (sound != null && sound.getCategory() == SoundCategory.MUSIC && IS_DJ) {
-                    Identifier id = sound.getId();
-                    if (id != null) {
-                        ClientPlayNetworking.send(new BGMSyncPayloads.Play(id.toString()));
-                        CURRENTLY_SYNCED = id.toString();
-                    }
-                }
-            } catch (Throwable ignored) {
-                // Never crash the client due to a sound hook.
-            }
-        });
     }
-
-    // ===== Public helpers used elsewhere =====
 
     public static boolean isDJ() {
         return IS_DJ;
@@ -85,10 +65,7 @@ public final class BGMSyncClient implements ClientModInitializer {
         }
     }
 
-    /**
-     * Called on listeners when the server sends a PLAY payload with a sound id string.
-     * Converts the string id into a RegistryEntry<SoundEvent> and plays it via MusicTracker.
-     */
+    /** Called on listeners when the server sends a PLAY payload with a sound id string. */
     public static void playFromDJ(String soundId) {
         var mc = MinecraftClient.getInstance();
         if (mc == null || mc.getNetworkHandler() == null) return;
@@ -113,47 +90,33 @@ public final class BGMSyncClient implements ClientModInitializer {
             mc.getMusicTracker().play(music);
             CURRENTLY_SYNCED = soundId;
         } catch (Exception ignored) {
-            // If anything fails to resolve, we silently ignore to avoid client crashes.
+            // silently ignore to avoid client crashes
         }
     }
 
-    /**
-     * Only the DJ is allowed to initiate music locally.
-     *  1) Pick a random "music-like" SoundEvent (vanilla or modded).
-     *  2) Send C2S PLAY with that id so the server can broadcast to listeners.
-     *  3) Play it locally for the DJ.
-     */
+    /** Only the DJ is allowed to initiate music locally + broadcast to everyone. */
     public static void playRandomForDJ() {
         if (!IS_DJ) return;
         var mc = MinecraftClient.getInstance();
         if (mc == null || mc.getNetworkHandler() == null || mc.getMusicTracker() == null) return;
 
-        // Gather candidates from the live registry the client got from server.
         Registry<SoundEvent> reg = mc.getNetworkHandler().getRegistryManager().get(RegistryKeys.SOUND_EVENT);
 
         List<Identifier> candidates = new ArrayList<>();
         List<Identifier> fallback = new ArrayList<>();
 
-        // 1.21.1: iterate IDs
         for (Identifier id : reg.getIds()) {
             if (id == null) continue;
             String path = id.getPath();
-            if (path.contains("music")) {
-                candidates.add(id);
-            } else {
-                fallback.add(id);
-            }
+            if (path.contains("music")) candidates.add(id);
+            else fallback.add(id);
         }
 
         Identifier chosenId = null;
-        if (!candidates.isEmpty()) {
-            chosenId = candidates.get(RNG.nextInt(candidates.size()));
-        } else if (!fallback.isEmpty()) {
-            chosenId = fallback.get(RNG.nextInt(fallback.size()));
-        }
+        if (!candidates.isEmpty()) chosenId = candidates.get(RNG.nextInt(candidates.size()));
+        else if (!fallback.isEmpty()) chosenId = fallback.get(RNG.nextInt(fallback.size()));
         if (chosenId == null) return;
 
-        // Resolve entry for playback
         var key = RegistryKey.of(RegistryKeys.SOUND_EVENT, chosenId);
         var entryOpt = reg.getEntry(key);
         if (entryOpt.isEmpty()) return;
