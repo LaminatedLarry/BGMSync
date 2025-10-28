@@ -1,94 +1,82 @@
 package com.bgmsync;
 
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
 import net.minecraft.util.Identifier;
 
+import static com.bgmsync.BGMSync.MODID;
+
+/**
+ * Payload definitions used by BGMSync (MC 1.21.1, Fabric).
+ *
+ * NOTE:
+ * - For Stop/Test we use enum singletons (use INSTANCE, never "new").
+ * - For DjOnly we expose DjOnly.of(boolean) so callers can create the right instance.
+ * - Play/ForcePlay carry a String sound id.
+ */
 public final class BGMSyncPayloads {
-    private BGMSyncPayloads() {}
 
-    // ========= PLAY =========
+    // ---------- PLAY (client should start a specific music track) ----------
     public record Play(String soundId) implements CustomPayload {
-        public static final CustomPayload.Id<Play> ID =
-                new CustomPayload.Id<>(Identifier.of(BGMSync.MODID, "play"));
+        public static final Id<Play> ID = new Id<>(Identifier.of(MODID, "play"));
 
-        public static final PacketCodec<RegistryByteBuf, Play> CODEC = new PacketCodec<>() {
-            @Override public Play decode(RegistryByteBuf buf) { return new Play(buf.readString()); }
-            @Override public void encode(RegistryByteBuf buf, Play value) { buf.writeString(value.soundId()); }
-        };
+        // Codec maps a String to/from this record.
+        public static final PacketCodec<PacketByteBuf, Play> CODEC =
+                PacketCodecs.STRING.xmap(Play::new, Play::soundId);
 
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
-    // ========= STOP =========
+    // ---------- STOP (stop current music only) ----------
     public enum Stop implements CustomPayload {
         INSTANCE;
 
-        public static final CustomPayload.Id<Stop> ID =
-                new CustomPayload.Id<>(Identifier.of(BGMSync.MODID, "stop"));
+        public static final Id<Stop> ID = new Id<>(Identifier.of(MODID, "stop"));
 
-        public static final PacketCodec<RegistryByteBuf, Stop> CODEC = new PacketCodec<>() {
-            @Override public Stop decode(RegistryByteBuf buf) { return INSTANCE; }
-            @Override public void encode(RegistryByteBuf buf, Stop value) { /* nothing */ }
-        };
+        // Unit codec (no fields) – encode/decode nothing.
+        public static final PacketCodec<PacketByteBuf, Stop> CODEC =
+                PacketCodecs.unit(INSTANCE);
 
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
-    // ========= TEST (server -> DJ) =========
+    // ---------- TEST (ask the DJ client to trigger a random music track) ----------
     public enum Test implements CustomPayload {
         INSTANCE;
 
-        public static final CustomPayload.Id<Test> ID =
-                new CustomPayload.Id<>(Identifier.of(BGMSync.MODID, "test"));
+        public static final Id<Test> ID = new Id<>(Identifier.of(MODID, "test"));
 
-        public static final PacketCodec<RegistryByteBuf, Test> CODEC = new PacketCodec<>() {
-            @Override public Test decode(RegistryByteBuf buf) { return INSTANCE; }
-            @Override public void encode(RegistryByteBuf buf, Test value) { /* nothing */ }
-        };
+        public static final PacketCodec<PacketByteBuf, Test> CODEC =
+                PacketCodecs.unit(INSTANCE);
 
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
-    // ========= DJ_ONLY FLAG =========
+    // ---------- DJ ONLY (tell a client whether it is the DJ) ----------
     public record DjOnly(boolean isDj) implements CustomPayload {
-        public static final CustomPayload.Id<DjOnly> ID =
-                new CustomPayload.Id<>(Identifier.of(BGMSync.MODID, "dj_only"));
+        public static final Id<DjOnly> ID = new Id<>(Identifier.of(MODID, "dj_only"));
 
-        public static final PacketCodec<RegistryByteBuf, DjOnly> CODEC = new PacketCodec<>() {
-            @Override public DjOnly decode(RegistryByteBuf buf) { return new DjOnly(buf.readBoolean()); }
-            @Override public void encode(RegistryByteBuf buf, DjOnly value) { buf.writeBoolean(value.isDj()); }
-        };
+        public static final PacketCodec<PacketByteBuf, DjOnly> CODEC =
+                PacketCodecs.BOOL.xmap(DjOnly::new, DjOnly::isDj);
+
+        /** Factory used by server-side code: DjOnly.of(true/false). */
+        public static DjOnly of(boolean value) { return new DjOnly(value); }
 
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
-    // ========= FORCE_PLAY (server -> DJ) =========
+    // ---------- FORCE PLAY (server tells DJ to force play a specific music track) ----------
     public record ForcePlay(String soundId) implements CustomPayload {
-        public static final CustomPayload.Id<ForcePlay> ID =
-                new CustomPayload.Id<>(Identifier.of(BGMSync.MODID, "force_play"));
+        public static final Id<ForcePlay> ID = new Id<>(Identifier.of(MODID, "force_play"));
 
-        public static final PacketCodec<RegistryByteBuf, ForcePlay> CODEC = new PacketCodec<>() {
-            @Override public ForcePlay decode(RegistryByteBuf buf) { return new ForcePlay(buf.readString()); }
-            @Override public void encode(RegistryByteBuf buf, ForcePlay value) { buf.writeString(value.soundId()); }
-        };
+        public static final PacketCodec<PacketByteBuf, ForcePlay> CODEC =
+                PacketCodecs.STRING.xmap(ForcePlay::new, ForcePlay::soundId);
 
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
-    public static void registerAll() {
-        // Bidirectional
-        PayloadTypeRegistry.playC2S().register(Play.ID, Play.CODEC);
-        PayloadTypeRegistry.playS2C().register(Play.ID, Play.CODEC);
-
-        PayloadTypeRegistry.playC2S().register(Stop.ID, Stop.CODEC);
-        PayloadTypeRegistry.playS2C().register(Stop.ID, Stop.CODEC);
-
-        // Server -> client
-        PayloadTypeRegistry.playS2C().register(Test.ID, Test.CODEC);
-        PayloadTypeRegistry.playS2C().register(DjOnly.ID, DjOnly.CODEC);
-        PayloadTypeRegistry.playS2C().register(ForcePlay.ID, ForcePlay.CODEC);
-    }
+    private BGMSyncPayloads() {}
 }
