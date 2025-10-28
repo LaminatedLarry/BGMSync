@@ -1,9 +1,10 @@
 {
-  "required": true,
+  "required": false,
   "minVersion": "0.8",
   "package": "com.bgmsync.mixin",
+  "compatibilityLevel": "JAVA_21",
   "client": [
-    "SoundManagerMixin"
+    "MusicTrackerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
