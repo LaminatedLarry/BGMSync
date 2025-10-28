@@ -4,6 +4,7 @@ import com.bgmsync.BGMSyncPayloads;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
@@ -11,10 +12,15 @@ import net.minecraft.sound.MusicSound;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
 public final class BGMSyncClient implements ClientModInitializer {
 
+    private static final Random RNG = new Random();
     private static volatile boolean IS_DJ = false;
-    private static volatile String CURRENTLY_SYNCED = null; // sound id string from DJ
+    private static volatile String CURRENTLY_SYNCED = null;
 
     @Override
     public void onInitializeClient() {
@@ -31,18 +37,18 @@ public final class BGMSyncClient implements ClientModInitializer {
             playFromDJ(payload.soundId());
         });
 
-        // Server tells listeners to stop music.
+        // Server tells clients to stop music.
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Stop.ID, (payload, context) -> {
             stopAllMusic();
         });
 
         // Server asks the DJ client to start a random track (vanilla or modded).
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Test.ID, (payload, context) -> {
-            playRandomForDJ();
+            playRandomForDJ(); // This will also broadcast C2S to the server.
         });
     }
 
-    // ===== Public helpers used by mixins =====
+    // ===== Public helpers used elsewhere =====
 
     public static boolean isDJ() {
         return IS_DJ;
@@ -50,7 +56,6 @@ public final class BGMSyncClient implements ClientModInitializer {
 
     public static void setIsDJ(boolean value) {
         IS_DJ = value;
-        // Listeners must never keep their own music running.
         if (!IS_DJ) stopAllMusic();
     }
 
@@ -69,7 +74,9 @@ public final class BGMSyncClient implements ClientModInitializer {
     public static void playFromDJ(String soundId) {
         var mc = MinecraftClient.getInstance();
         if (mc == null || mc.getNetworkHandler() == null) return;
-        if (IS_DJ) return; // DJ already plays locally via SoundManager; don't double-play
+
+        // DJ already plays locally; listeners only.
+        if (IS_DJ) return;
 
         try {
             var id = Identifier.of(soundId);
@@ -78,13 +85,11 @@ public final class BGMSyncClient implements ClientModInitializer {
                     .getRegistryManager()
                     .get(RegistryKeys.SOUND_EVENT)
                     .getEntry(key);
-            if (entryOpt.isEmpty()) return;
 
+            if (entryOpt.isEmpty()) return;
             RegistryEntry<SoundEvent> entry = entryOpt.get();
 
-            // Ensure we don't layer multiple tracks.
-            stopAllMusic();
-
+            stopAllMusic(); // ensure we don't layer tracks
             MusicSound music = new MusicSound(entry, 0, 0, true);
             mc.getMusicTracker().play(music);
             CURRENTLY_SYNCED = soundId;
@@ -95,22 +100,61 @@ public final class BGMSyncClient implements ClientModInitializer {
 
     /**
      * Only the DJ is allowed to initiate music locally.
-     * This uses the game's current music selection, which may be vanilla or modded,
-     * and then our SoundManager mixin will broadcast it to the server.
+     * This method now:
+     *  1) Picks a random "music-like" SoundEvent (vanilla or modded).
+     *  2) Sends C2S PLAY with that id so the server can broadcast to listeners.
+     *  3) Plays it locally for the DJ.
      */
     public static void playRandomForDJ() {
         if (!IS_DJ) return;
         var mc = MinecraftClient.getInstance();
-        if (mc == null || mc.getMusicTracker() == null) return;
+        if (mc == null || mc.getNetworkHandler() == null || mc.getMusicTracker() == null) return;
 
-        // Stop any current track, then let the tracker pick one (state-based random).
-        mc.getMusicTracker().stop();
-        // Ask tracker to start according to current context (biome/menu/etc.)
-        // The tracker will schedule and begin playing; our SoundManager mixin will capture it.
-        // To nudge immediate playback, request a generic "current context" music sound:
-        var current = mc.getMusicType(); // returns MusicSound representing current context
-        if (current != null) {
-            mc.getMusicTracker().play(current);
+        // Gather candidates from the live registry the client got from server.
+        var reg = mc.getNetworkHandler().getRegistryManager().get(RegistryKeys.SOUND_EVENT);
+
+        List<RegistryEntry<SoundEvent>> candidates = new ArrayList<>();
+        List<RegistryEntry<SoundEvent>> fallback = new ArrayList<>();
+
+        for (var entry : reg.iterateEntries()) {
+            Identifier id = reg.getId(entry.value());
+            if (id == null) continue;
+
+            // Prefer anything that looks like background music.
+            // Works with vanilla (music.menu, music.game, music.biome.*, etc.)
+            // and most mods that name music similarly.
+            String path = id.getPath();
+            if (path.contains("music")) {
+                candidates.add(entry);
+            } else {
+                fallback.add(entry);
+            }
         }
+
+        RegistryEntry<SoundEvent> chosen = null;
+        if (!candidates.isEmpty()) {
+            chosen = candidates.get(RNG.nextInt(candidates.size()));
+        } else if (!fallback.isEmpty()) {
+            chosen = fallback.get(RNG.nextInt(fallback.size()));
+        }
+
+        if (chosen == null) return;
+
+        // Resolve its Identifier for networking.
+        Identifier chosenId = reg.getId(chosen.value());
+        if (chosenId == null) return;
+        String idString = chosenId.toString();
+
+        // 1) Tell server which track to sync (C2S):
+        ClientPlayNetworking.send(new BGMSyncPayloads.Play(idString));
+
+        // 2) Stop any local current track
+        mc.getMusicTracker().stop();
+
+        // 3) Play it locally for the DJ right now
+        MusicSound music = new MusicSound(chosen, 0, 0, true);
+        mc.getMusicTracker().play(music);
+
+        CURRENTLY_SYNCED = idString;
     }
 }
