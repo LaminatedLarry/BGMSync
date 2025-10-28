@@ -1,7 +1,7 @@
 package com.bgmsync.client;
 
-import com.bgmsync.BGMSync;
 import com.bgmsync.BGMSyncPayloads;
+import com.mojang.logging.LogUtils;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
@@ -11,6 +11,7 @@ import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.sound.MusicSound;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +19,11 @@ import java.util.Optional;
 import java.util.Random;
 
 public final class BGMSyncClient implements ClientModInitializer {
-    private static boolean djOnly = false; // true on DJ client
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    // True on the client who is the DJ (server informs us via DjOnly payload)
+    private static boolean djOnly = false;
+
     private static final Random RNG = new Random();
 
     @Override
@@ -39,7 +44,7 @@ public final class BGMSyncClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Test.ID, (payload, context) -> {
             MinecraftClient mc = context.client();
             mc.execute(() -> {
-                if (!djOnly) return; // safety: only DJ responds
+                if (!djOnly) return; // only DJ responds
                 Optional<String> pick = pickRandomSoundId();
                 pick.ifPresent(id -> {
                     // Play locally on DJ…
@@ -62,7 +67,7 @@ public final class BGMSyncClient implements ClientModInitializer {
             mc.execute(() -> {
                 if (djOnly) {
                     playMusicById(mc, id);
-                    // let the server propagate the same PLAY packet to everyone else
+                    // Let the server propagate the same PLAY packet to everyone else
                     ClientPlayNetworking.send(new BGMSyncPayloads.Play(id));
                 }
             });
@@ -71,10 +76,14 @@ public final class BGMSyncClient implements ClientModInitializer {
 
     // ---- Helpers ----
 
+    public static boolean isDJ() {
+        return djOnly;
+    }
+
     private static void playMusicById(MinecraftClient mc, String soundId) {
         Optional<RegistryEntry.Reference<SoundEvent>> entry = lookupSoundEntry(soundId);
         if (entry.isEmpty()) {
-            BGMSync.LOGGER.warn("[BGMSync] Unknown sound id: {}", soundId);
+            LOGGER.warn("[BGMSync] Unknown sound id: {}", soundId);
             return;
         }
         MusicTracker tracker = mc.getMusicTracker();
@@ -90,7 +99,7 @@ public final class BGMSyncClient implements ClientModInitializer {
     }
 
     private static Optional<String> pickRandomSoundId() {
-        // Build a list of all registered sound ids (vanilla + modded like Immersive Music)
+        // All registered sounds (vanilla + modded like Immersive Music)
         List<Identifier> ids = new ArrayList<>();
         Registries.SOUND_EVENT.getIds().forEach(ids::add);
         if (ids.isEmpty()) return Optional.empty();
