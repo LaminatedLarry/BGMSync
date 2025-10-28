@@ -22,26 +22,23 @@ import static net.minecraft.server.command.CommandManager.literal;
 public final class BGMSync implements ModInitializer {
     public static final String MODID = "bgmsync";
 
-    // Payload IDs (kept here for clarity; actual payload classes in BGMSyncPayloads)
     public static final Identifier PACKET_PLAY      = Identifier.of(MODID, "play");
     public static final Identifier PACKET_STOP      = Identifier.of(MODID, "stop");
     public static final Identifier PACKET_TEST      = Identifier.of(MODID, "test");
     public static final Identifier PACKET_DJ_ONLY   = Identifier.of(MODID, "dj_only");
     public static final Identifier PACKET_FORCEPLAY = Identifier.of(MODID, "force_play");
 
-    private static UUID currentDJ = null; // server remembers who the DJ is
+    private static UUID currentDJ = null;
 
     @Override
     public void onInitialize() {
-        // Choose/clear DJ on server lifecycle
         ServerLifecycleEvents.SERVER_STARTED.register(this::chooseDJ);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> currentDJ = null);
 
-        // Relay PLAY, STOP to clients (server never plays sounds; just broadcasts)
         ServerPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Play.ID, (payload, context) -> {
             String id = payload.soundId();
             Identifier parsed = Identifier.tryParse(id);
-            if (parsed == null || !MusicIds.isMusicId(parsed)) return; // enforce music-only
+            if (parsed == null || !MusicIds.isMusicId(parsed)) return;
             context.server().execute(() -> broadcastPlay(context.server(), id));
         });
 
@@ -49,44 +46,38 @@ public final class BGMSync implements ModInitializer {
             context.server().execute(() -> broadcastStop(context.server()))
         );
 
-        // When someone joins, tell them if they are the DJ and if DJ is currently playing something,
-        // the next natural MusicTracker tick will sync due to client mixin.
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
             server.execute(() -> {
                 ServerPlayerEntity p = handler.player;
                 boolean isDj = isDJ(p);
-                ServerPlayNetworking.send(p, new BGMSyncPayloads.DjOnly(isDj));
+                ServerPlayNetworking.send(p, BGMSyncPayloads.DjOnly.of(isDj));
             })
         );
 
-        // Commands: /bgmsync <test|stop|set <player>|who|play <music_id>>
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(literal("bgmsync")
-                // test: ask DJ client to pick a random *music* id and broadcast it
                 .then(literal("test").executes(ctx -> {
                     ServerPlayerEntity dj = getDJ(ctx.getSource().getServer());
                     if (dj == null) {
                         ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] No DJ available."), false);
                         return 0;
                     }
-                    ServerPlayNetworking.send(dj, new BGMSyncPayloads.Test());
+                    // FIX: Test is a singleton/enum – use INSTANCE
+                    ServerPlayNetworking.send(dj, BGMSyncPayloads.Test.INSTANCE);
                     ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] Test triggered for DJ: " + dj.getName().getString()), true);
                     return 1;
                 }))
 
-                // stop: stop current track for everyone (doesn't block future music)
                 .then(literal("stop").executes(ctx -> {
                     broadcastStop(ctx.getSource().getServer());
                     ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] Stopped current music for all players."), true);
                     return 1;
                 }))
 
-                // set <player>: set DJ
                 .then(literal("set")
                     .then(argument("player", net.minecraft.command.argument.GameProfileArgumentType.gameProfile())
                         .executes(this::cmdSetDj)))
 
-                // who: show current DJ
                 .then(literal("who").executes(ctx -> {
                     ServerPlayerEntity dj = getDJ(ctx.getSource().getServer());
                     String name = (dj == null) ? "none" : dj.getName().getString();
@@ -94,7 +85,6 @@ public final class BGMSync implements ModInitializer {
                     return 1;
                 }))
 
-                // play <music_id> : only allow *music* ids; tab-complete from music list
                 .then(literal("play")
                     .then(argument("id", StringArgumentType.string())
                         .suggests((c, b) -> {
@@ -113,7 +103,6 @@ public final class BGMSync implements ModInitializer {
                                 ctx.getSource().sendError(Text.literal("[BGMSync] No DJ available."));
                                 return 0;
                             }
-                            // Tell DJ client to play exactly this (then DJ re-broadcasts PLAY)
                             ServerPlayNetworking.send(dj, new BGMSyncPayloads.ForcePlay(id));
                             ctx.getSource().sendFeedback(() -> Text.literal("[BGMSync] Requested: " + id), true);
                             return 1;
@@ -122,7 +111,6 @@ public final class BGMSync implements ModInitializer {
         });
     }
 
-    // ---- server helpers ----
     private int cmdSetDj(CommandContext<ServerCommandSource> ctx) {
         MinecraftServer server = ctx.getSource().getServer();
         try {
@@ -139,10 +127,9 @@ public final class BGMSync implements ModInitializer {
                 return 0;
             }
             currentDJ = chosen.getUuid();
-            // Update everyone’s djOnly flag
             for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
                 boolean isDj = isDJ(p);
-                ServerPlayNetworking.send(p, new BGMSyncPayloads.DjOnly(isDj));
+                ServerPlayNetworking.send(p, BGMSyncPayloads.DjOnly.of(isDj));
             }
             server.getPlayerManager().broadcast(Text.literal("[BGMSync] DJ is now: " + chosen.getName().getString()), false);
             return 1;
@@ -160,16 +147,17 @@ public final class BGMSync implements ModInitializer {
 
     private void broadcastStop(MinecraftServer server) {
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-            ServerPlayNetworking.send(p, new BGMSyncPayloads.Stop());
+            // FIX: Stop is a singleton/enum – use INSTANCE
+            ServerPlayNetworking.send(p, BGMSyncPayloads.Stop.INSTANCE);
         }
     }
 
     private void chooseDJ(MinecraftServer server) {
         List<ServerPlayerEntity> players = server.getPlayerManager().getPlayerList();
-        currentDJ = players.isEmpty() ? null : players.get(0).getUuid(); // first joiner is DJ
+        currentDJ = players.isEmpty() ? null : players.get(0).getUuid();
         for (ServerPlayerEntity p : players) {
             boolean isDj = isDJ(p);
-            ServerPlayNetworking.send(p, new BGMSyncPayloads.DjOnly(isDj));
+            ServerPlayNetworking.send(p, BGMSyncPayloads.DjOnly.of(isDj));
         }
     }
 
