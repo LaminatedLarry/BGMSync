@@ -3,9 +3,11 @@ package com.bgmsync.mixin;
 import com.bgmsync.BGMSyncPayloads;
 import com.bgmsync.client.BGMSyncClient;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.sound.MusicTracker;
 import net.minecraft.sound.MusicSound;
+import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.sound.SoundEvent;
+import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -23,13 +25,11 @@ public class MusicTrackerMixin {
         try {
             if (!BGMSyncClient.isDJ() || musicSound == null) return;
 
-            var mc = MinecraftClient.getInstance();
-            if (mc == null || mc.getNetworkHandler() == null) return;
+            // Access MusicSound#sound (RegistryEntry<SoundEvent>) via accessor
+            RegistryEntry<SoundEvent> entry = ((MusicSoundAccessor) (Object) musicSound).bgmsync$getSound();
+            if (entry == null || entry.getKey().isEmpty()) return;
 
-            var entry = musicSound.event();
-            if (entry == null) return;
-
-            var id = entry.registryKey().getValue(); // Identifier
+            Identifier id = entry.getKey().get().getValue();
             if (id == null) return;
 
             ClientPlayNetworking.send(new BGMSyncPayloads.Play(id.toString()));
@@ -46,7 +46,7 @@ public class MusicTrackerMixin {
     private void bgmsync$onStop(CallbackInfo ci) {
         try {
             if (!BGMSyncClient.isDJ()) return;
-            ClientPlayNetworking.send(new BGMSyncPayloads.Stop());
+            ClientPlayNetworking.send(BGMSyncPayloads.Stop.INSTANCE);
         } catch (Throwable ignored) {
         }
     }
