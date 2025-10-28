@@ -3,12 +3,14 @@ package com.bgmsync.client;
 import com.bgmsync.BGMSyncPayloads;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.sound.v1.PlaySoundCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.sound.MusicSound;
+import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.util.Identifier;
 
@@ -45,6 +47,24 @@ public final class BGMSyncClient implements ClientModInitializer {
         // Server asks the DJ client to start a random track (vanilla or modded).
         ClientPlayNetworking.registerGlobalReceiver(BGMSyncPayloads.Test.ID, (payload, context) -> {
             playRandomForDJ(); // This will also broadcast C2S to the server.
+        });
+
+        // === Natural music sync (no mixins) ===
+        // Whenever the client plays any sound, if we are the DJ and it's MUSIC category,
+        // broadcast the exact sound id to the server so listeners play the same track.
+        PlaySoundCallback.EVENT.register((sound, manager) -> {
+            try {
+                if (sound != null && sound.getCategory() == SoundCategory.MUSIC && IS_DJ) {
+                    Identifier id = sound.getId();
+                    if (id != null) {
+                        ClientPlayNetworking.send(new BGMSyncPayloads.Play(id.toString()));
+                        CURRENTLY_SYNCED = id.toString();
+                    }
+                }
+            } catch (Throwable ignored) {
+                // Never crash the client due to a sound hook.
+            }
+            return sound; // don’t modify or cancel the sound; just observe & broadcast
         });
     }
 
@@ -101,10 +121,9 @@ public final class BGMSyncClient implements ClientModInitializer {
 
     /**
      * Only the DJ is allowed to initiate music locally.
-     * This method now:
-     *  1) Picks a random "music-like" SoundEvent (vanilla or modded).
-     *  2) Sends C2S PLAY with that id so the server can broadcast to listeners.
-     *  3) Plays it locally for the DJ.
+     *  1) Pick a random "music-like" SoundEvent (vanilla or modded).
+     *  2) Send C2S PLAY with that id so the server can broadcast to listeners.
+     *  3) Play it locally for the DJ.
      */
     public static void playRandomForDJ() {
         if (!IS_DJ) return;
@@ -117,7 +136,7 @@ public final class BGMSyncClient implements ClientModInitializer {
         List<Identifier> candidates = new ArrayList<>();
         List<Identifier> fallback = new ArrayList<>();
 
-        // 1.21.1: iterate IDs, not entries
+        // 1.21.1: iterate IDs
         for (Identifier id : reg.getIds()) {
             if (id == null) continue;
             String path = id.getPath();
