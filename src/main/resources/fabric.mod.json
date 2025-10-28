@@ -28,7 +28,5 @@
     "fabricloader": ">=0.15.10",
     "minecraft": "~1.21.1",
     "fabric-api": "*"
-  },
-
-  "accessWidener": null
+  }
 }
