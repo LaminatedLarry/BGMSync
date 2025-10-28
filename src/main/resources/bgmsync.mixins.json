@@ -4,6 +4,7 @@
   "package": "com.bgmsync.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "MusicSoundAccessor",
     "MusicTrackerMixin"
   ],
   "injectors": {
