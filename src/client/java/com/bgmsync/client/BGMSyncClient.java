@@ -4,7 +4,7 @@ import com.bgmsync.BGMSyncPayloads;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
@@ -81,11 +81,12 @@ public final class BGMSyncClient implements ClientModInitializer {
         try {
             var id = Identifier.of(soundId);
             var key = RegistryKey.of(RegistryKeys.SOUND_EVENT, id);
-            var entryOpt = mc.getNetworkHandler()
-                    .getRegistryManager()
-                    .get(RegistryKeys.SOUND_EVENT)
-                    .getEntry(key);
 
+            Registry<SoundEvent> reg = mc.getNetworkHandler()
+                    .getRegistryManager()
+                    .get(RegistryKeys.SOUND_EVENT);
+
+            var entryOpt = reg.getEntry(key);
             if (entryOpt.isEmpty()) return;
             RegistryEntry<SoundEvent> entry = entryOpt.get();
 
@@ -111,38 +112,36 @@ public final class BGMSyncClient implements ClientModInitializer {
         if (mc == null || mc.getNetworkHandler() == null || mc.getMusicTracker() == null) return;
 
         // Gather candidates from the live registry the client got from server.
-        var reg = mc.getNetworkHandler().getRegistryManager().get(RegistryKeys.SOUND_EVENT);
+        Registry<SoundEvent> reg = mc.getNetworkHandler().getRegistryManager().get(RegistryKeys.SOUND_EVENT);
 
-        List<RegistryEntry<SoundEvent>> candidates = new ArrayList<>();
-        List<RegistryEntry<SoundEvent>> fallback = new ArrayList<>();
+        List<Identifier> candidates = new ArrayList<>();
+        List<Identifier> fallback = new ArrayList<>();
 
-        for (var entry : reg.iterateEntries()) {
-            Identifier id = reg.getId(entry.value());
+        // 1.21.1: iterate IDs, not entries
+        for (Identifier id : reg.getIds()) {
             if (id == null) continue;
-
-            // Prefer anything that looks like background music.
-            // Works with vanilla (music.menu, music.game, music.biome.*, etc.)
-            // and most mods that name music similarly.
             String path = id.getPath();
             if (path.contains("music")) {
-                candidates.add(entry);
+                candidates.add(id);
             } else {
-                fallback.add(entry);
+                fallback.add(id);
             }
         }
 
-        RegistryEntry<SoundEvent> chosen = null;
+        Identifier chosenId = null;
         if (!candidates.isEmpty()) {
-            chosen = candidates.get(RNG.nextInt(candidates.size()));
+            chosenId = candidates.get(RNG.nextInt(candidates.size()));
         } else if (!fallback.isEmpty()) {
-            chosen = fallback.get(RNG.nextInt(fallback.size()));
+            chosenId = fallback.get(RNG.nextInt(fallback.size()));
         }
-
-        if (chosen == null) return;
-
-        // Resolve its Identifier for networking.
-        Identifier chosenId = reg.getId(chosen.value());
         if (chosenId == null) return;
+
+        // Resolve entry for playback
+        var key = RegistryKey.of(RegistryKeys.SOUND_EVENT, chosenId);
+        var entryOpt = reg.getEntry(key);
+        if (entryOpt.isEmpty()) return;
+        RegistryEntry<SoundEvent> chosenEntry = entryOpt.get();
+
         String idString = chosenId.toString();
 
         // 1) Tell server which track to sync (C2S):
@@ -152,7 +151,7 @@ public final class BGMSyncClient implements ClientModInitializer {
         mc.getMusicTracker().stop();
 
         // 3) Play it locally for the DJ right now
-        MusicSound music = new MusicSound(chosen, 0, 0, true);
+        MusicSound music = new MusicSound(chosenEntry, 0, 0, true);
         mc.getMusicTracker().play(music);
 
         CURRENTLY_SYNCED = idString;
