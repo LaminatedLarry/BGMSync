@@ -14,7 +14,6 @@ public final class BGMSyncPayloads {
         public static final CustomPayload.Id<Play> ID =
                 new CustomPayload.Id<>(Identifier.of(BGMSync.MODID, "play"));
 
-        // Manual codec for RegistryByteBuf
         public static final PacketCodec<RegistryByteBuf, Play> CODEC = new PacketCodec<>() {
             @Override public Play decode(RegistryByteBuf buf) { return new Play(buf.readString()); }
             @Override public void encode(RegistryByteBuf buf, Play value) { buf.writeString(value.soundId()); }
@@ -32,7 +31,7 @@ public final class BGMSyncPayloads {
 
         public static final PacketCodec<RegistryByteBuf, Stop> CODEC = new PacketCodec<>() {
             @Override public Stop decode(RegistryByteBuf buf) { return INSTANCE; }
-            @Override public void encode(RegistryByteBuf buf, Stop value) { /* no fields */ }
+            @Override public void encode(RegistryByteBuf buf, Stop value) { /* nothing */ }
         };
 
         @Override public Id<? extends CustomPayload> getId() { return ID; }
@@ -47,7 +46,7 @@ public final class BGMSyncPayloads {
 
         public static final PacketCodec<RegistryByteBuf, Test> CODEC = new PacketCodec<>() {
             @Override public Test decode(RegistryByteBuf buf) { return INSTANCE; }
-            @Override public void encode(RegistryByteBuf buf, Test value) { /* no fields */ }
+            @Override public void encode(RegistryByteBuf buf, Test value) { /* nothing */ }
         };
 
         @Override public Id<? extends CustomPayload> getId() { return ID; }
@@ -80,14 +79,14 @@ public final class BGMSyncPayloads {
     }
 
     public static void registerAll() {
-        // Bidirectional payloads
+        // Bidirectional
         PayloadTypeRegistry.playC2S().register(Play.ID, Play.CODEC);
         PayloadTypeRegistry.playS2C().register(Play.ID, Play.CODEC);
 
         PayloadTypeRegistry.playC2S().register(Stop.ID, Stop.CODEC);
         PayloadTypeRegistry.playS2C().register(Stop.ID, Stop.CODEC);
 
-        // Server -> client only
+        // Server -> client
         PayloadTypeRegistry.playS2C().register(Test.ID, Test.CODEC);
         PayloadTypeRegistry.playS2C().register(DjOnly.ID, DjOnly.CODEC);
         PayloadTypeRegistry.playS2C().register(ForcePlay.ID, ForcePlay.CODEC);
